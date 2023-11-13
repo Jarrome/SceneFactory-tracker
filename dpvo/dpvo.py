@@ -166,7 +166,7 @@ class DPVO:
         poses = [self.get_pose(t) for t in range(self.counter)]
         poses = lietorch.stack(poses, dim=0)
         poses = poses.inv().data.cpu().numpy()
-        tstamps = np.array(self.tlist, dtype=np.float)
+        tstamps = np.array(self.tlist, dtype=float)
 
         if self.viewer is not None:
             self.viewer.join()

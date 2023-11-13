@@ -13,6 +13,7 @@ from dpvo.dpvo import DPVO
 from dpvo.config import cfg
 from dpvo.stream import image_stream, video_stream
 from dpvo.plot_utils import plot_trajectory, save_trajectory_tum_format
+import pdb
 
 SKIP = 0
 
@@ -35,7 +36,9 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
     reader.start()
 
     while 1:
+        pdb.set_trace()
         (t, image, intrinsics) = queue.get()
+        print(t)
         if t < 0: break
 
         image = torch.from_numpy(image).permute(2,0,1).cuda()
