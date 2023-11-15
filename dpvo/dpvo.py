@@ -287,9 +287,9 @@ class DPVO:
 
             try:
                 fastba.BA(self.poses, self.patches, self.intrinsics, 
-                    target, weight, lmbda, self.ii, self.jj, self.kk, t0, self.n, 2)
-            except:
-                print("Warning BA failed...")
+                    target, weight, lmbda, self.ii, self.jj, self.kk, t0, self.n, 2, self.motion_only)
+            except Exception as e:
+                print("Warning BA failed...",e)
             
             points = pops.point_cloud(SE3(self.poses), self.patches[:, :self.m], self.intrinsics, self.ix[:self.m])
             points = (points[...,1,1,:3] / points[...,1,1,3:]).reshape(-1, 3)
@@ -317,6 +317,7 @@ class DPVO:
 
     def __call__(self, tstamp, image, intrinsics, depth=None):
         """ track new frame """
+        self.motion_only = depth is not None
 
         if (self.n+1) >= self.N:
             raise Exception(f'The buffer size is too small. You can increase it using "--buffer {self.N*2}"')
@@ -364,7 +365,7 @@ class DPVO:
                 s = torch.median(self.patches_[self.n-3:self.n,:,2])
                 patches[:,:,2] = s
             else:
-                # In Yijun's application, we expect the depth is around 2m.
+                # In Yijun's mono application, we expect the depth is around 2m.
                 patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None])*.5
 
         else:
@@ -404,8 +405,6 @@ class DPVO:
         elif self.is_initialized:
             self.update()
             self.keyframe()
-
-            
 
 
 
