@@ -358,10 +358,14 @@ class DPVO:
                 self.poses_[self.n] = tvec_qvec
 
         # TODO better depth initialization
-        patches[:,:,2] = torch.rand_like(patches[:,:,2,0,0,None,None])
+        #patches[:,:,2] = torch.rand_like(patches[:,:,2,0,0,None,None])
         if self.is_initialized:
             s = torch.median(self.patches_[self.n-3:self.n,:,2])
             patches[:,:,2] = s
+        else:
+            # In Yijun's application, we expect the depth is around 2m.
+            patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None])*.5
+
 
         self.patches_[self.n] = patches
 
