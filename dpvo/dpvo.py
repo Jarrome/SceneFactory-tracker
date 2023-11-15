@@ -10,7 +10,7 @@ from .lietorch import SE3
 from .net import VONet
 from .utils import *
 from . import projective_ops as pops
-
+import pdb
 autocast = torch.cuda.amp.autocast
 Id = SE3.Identity(1, device="cuda")
 
@@ -315,7 +315,7 @@ class DPVO:
         return flatmeshgrid(torch.arange(t0, t1, device="cuda"),
             torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing='ij')
 
-    def __call__(self, tstamp, image, intrinsics):
+    def __call__(self, tstamp, image, intrinsics, depth=None):
         """ track new frame """
 
         if (self.n+1) >= self.N:
@@ -359,13 +359,20 @@ class DPVO:
 
         # TODO better depth initialization
         #patches[:,:,2] = torch.rand_like(patches[:,:,2,0,0,None,None])
-        if self.is_initialized:
-            s = torch.median(self.patches_[self.n-3:self.n,:,2])
-            patches[:,:,2] = s
-        else:
-            # In Yijun's application, we expect the depth is around 2m.
-            patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None])*.5
+        if depth is None:
+            if self.is_initialized:
+                s = torch.median(self.patches_[self.n-3:self.n,:,2])
+                patches[:,:,2] = s
+            else:
+                # In Yijun's application, we expect the depth is around 2m.
+                patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None])*.5
 
+        else:
+            # patches is 1x96x3x3x3
+            _xys = patches[0,:,:2,:,:].permute(0,2,3,1).reshape(-1,2)
+            _ds = depth[(_xys[:,1]*self.RES).long(), (_xys[:,0]*self.RES).long()].reshape(1,-1,3,3)
+            _ds[_ds==0] = 1e-5
+            patches[:,:,2] = 1/_ds 
 
         self.patches_[self.n] = patches
 

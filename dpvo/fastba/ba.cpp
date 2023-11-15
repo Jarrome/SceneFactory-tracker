@@ -37,7 +37,7 @@ std::vector<torch::Tensor> ba(
     torch::Tensor jj, 
     torch::Tensor kk,
     int t0, int t1, int iterations, bool motion_only) {
-  return cuda_ba(poses, patches, intrinsics, target, weight, lmbda, ii, jj, kk, t0, t1, iterations, bool motion_only);
+  return cuda_ba(poses, patches, intrinsics, target, weight, lmbda, ii, jj, kk, t0, t1, iterations, motion_only);
 }
 
 
