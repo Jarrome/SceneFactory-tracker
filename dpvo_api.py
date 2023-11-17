@@ -23,9 +23,9 @@ args.config = pwd+'/config/default.yaml'
 cfg.merge_from_file(args.config)
 cfg.BUFFER_SIZE = 2048
 
-def get_dpvo(H,W):
+def get_dpvo(H,W,device='cuda:1'):
     global args, cfg 
-    return DPVO(cfg, args.network, ht=H, wd=W, viz=False) 
+    return DPVO(cfg, args.network, ht=H, wd=W, viz=False, device=device) 
     
 
 

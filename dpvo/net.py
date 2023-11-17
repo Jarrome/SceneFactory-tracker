@@ -93,8 +93,9 @@ class Update(nn.Module):
 
 
 class Patchifier(nn.Module):
-    def __init__(self, patch_size=3):
+    def __init__(self, patch_size=3, device='cuda:0'):
         super(Patchifier, self).__init__()
+        self.device = device
         self.patch_size = patch_size
         self.fnet = BasicEncoder4(output_dim=128, norm_fn='instance')
         self.inet = BasicEncoder4(output_dim=DIM, norm_fn='none')
@@ -118,8 +119,8 @@ class Patchifier(nn.Module):
         # bias patch selection towards regions with high gradient
         if gradient_bias:
             g = self.__image_gradient(images)
-            x = torch.randint(1, w-1, size=[n, 3*patches_per_image], device="cuda")
-            y = torch.randint(1, h-1, size=[n, 3*patches_per_image], device="cuda")
+            x = torch.randint(1, w-1, size=[n, 3*patches_per_image], device=self.device)
+            y = torch.randint(1, h-1, size=[n, 3*patches_per_image], device=self.device)
 
             coords = torch.stack([x, y], dim=-1).float()
             g = altcorr.patchify(g[0,:,None], coords, 0).view(n, 3 * patches_per_image)
@@ -129,8 +130,8 @@ class Patchifier(nn.Module):
             y = torch.gather(y, 1, ix[:, -patches_per_image:])
 
         else:
-            x = torch.randint(1, w-1, size=[n, patches_per_image], device="cuda")
-            y = torch.randint(1, h-1, size=[n, patches_per_image], device="cuda")
+            x = torch.randint(1, w-1, size=[n, patches_per_image], device=self.device)
+            y = torch.randint(1, h-1, size=[n, patches_per_image], device=self.device)
         
         coords = torch.stack([x, y], dim=-1).float()
         imap = altcorr.patchify(imap[0], coords, 0).view(b, -1, DIM, 1, 1)
@@ -140,12 +141,12 @@ class Patchifier(nn.Module):
             clr = altcorr.patchify(images[0], 4*(coords + 0.5), 0).view(b, -1, 3)
 
         if disps is None:
-            disps = torch.ones(b, n, h, w, device="cuda")
+            disps = torch.ones(b, n, h, w, device=self.device)
 
         grid, _ = coords_grid_with_index(disps, device=fmap.device)
         patches = altcorr.patchify(grid[0], coords, P//2).view(b, -1, 3, P, P)
 
-        index = torch.arange(n, device="cuda").view(n, 1)
+        index = torch.arange(n, device=self.device).view(n, 1)
         index = index.repeat(1, patches_per_image).reshape(-1)
 
         if return_color:
@@ -171,10 +172,11 @@ class CorrBlock:
 
 
 class VONet(nn.Module):
-    def __init__(self, use_viewer=False):
+    def __init__(self, use_viewer=False, device='cuda:0'):
         super(VONet, self).__init__()
+        self.device = device
         self.P = 3
-        self.patchify = Patchifier(self.P)
+        self.patchify = Patchifier(self.P, device)
         self.update = Update(self.P)
 
         self.DIM = DIM
@@ -202,11 +204,11 @@ class VONet(nn.Module):
         d = patches[..., 2, p//2, p//2]
         patches = set_depth(patches, torch.rand_like(d))
 
-        kk, jj = flatmeshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device="cuda"))
+        kk, jj = flatmeshgrid(torch.where(ix < 8)[0], torch.arange(0,8, device=self.device))
         ii = ix[kk]
 
         imap = imap.view(b, -1, DIM)
-        net = torch.zeros(b, len(kk), DIM, device="cuda", dtype=torch.float)
+        net = torch.zeros(b, len(kk), DIM, device=self.device, dtype=torch.float)
         
         Gs = SE3.IdentityLike(poses)
 
@@ -223,14 +225,14 @@ class VONet(nn.Module):
             n = ii.max() + 1
             if len(traj) >= 8 and n < images.shape[1]:
                 if not structure_only: Gs.data[:,n] = Gs.data[:,n-1]
-                kk1, jj1 = flatmeshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device="cuda"))
-                kk2, jj2 = flatmeshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device="cuda"))
+                kk1, jj1 = flatmeshgrid(torch.where(ix  < n)[0], torch.arange(n, n+1, device=self.device))
+                kk2, jj2 = flatmeshgrid(torch.where(ix == n)[0], torch.arange(0, n+1, device=self.device))
 
                 ii = torch.cat([ix[kk1], ix[kk2], ii])
                 jj = torch.cat([jj1, jj2, jj])
                 kk = torch.cat([kk1, kk2, kk])
 
-                net1 = torch.zeros(b, len(kk1) + len(kk2), DIM, device="cuda")
+                net1 = torch.zeros(b, len(kk1) + len(kk2), DIM, device=self.device)
                 net = torch.cat([net1, net], dim=1)
 
                 if np.random.rand() < 0.1:

@@ -11,12 +11,14 @@ from .net import VONet
 from .utils import *
 from . import projective_ops as pops
 import pdb
+from rich import print
 autocast = torch.cuda.amp.autocast
-Id = SE3.Identity(1, device="cuda")
+Id = SE3.Identity(1, device='cuda:0')
 
 
 class DPVO:
-    def __init__(self, cfg, network, ht=480, wd=640, viz=False):
+    def __init__(self, cfg, network, ht=480, wd=640, viz=False, device='cuda:0'):
+        self.device=device
         self.cfg = cfg
         self.load_weights(network)
         self.is_initialized = False
@@ -40,24 +42,24 @@ class DPVO:
         # dummy image for visualization
         self.image_ = torch.zeros(self.ht, self.wd, 3, dtype=torch.uint8, device="cpu")
 
-        self.tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
-        self.poses_ = torch.zeros(self.N, 7, dtype=torch.float, device="cuda")
-        self.patches_ = torch.zeros(self.N, self.M, 3, self.P, self.P, dtype=torch.float, device="cuda")
-        self.intrinsics_ = torch.zeros(self.N, 4, dtype=torch.float, device="cuda")
+        self.tstamps_ = torch.zeros(self.N, dtype=torch.long, device=self.device)
+        self.poses_ = torch.zeros(self.N, 7, dtype=torch.float, device=self.device)
+        self.patches_ = torch.zeros(self.N, self.M, 3, self.P, self.P, dtype=torch.float, device=self.device)
+        self.intrinsics_ = torch.zeros(self.N, 4, dtype=torch.float, device=self.device)
 
-        self.points_ = torch.zeros(self.N * self.M, 3, dtype=torch.float, device="cuda")
-        self.colors_ = torch.zeros(self.N, self.M, 3, dtype=torch.uint8, device="cuda")
+        self.points_ = torch.zeros(self.N * self.M, 3, dtype=torch.float, device=self.device)
+        self.colors_ = torch.zeros(self.N, self.M, 3, dtype=torch.uint8, device=self.device)
 
-        self.index_ = torch.zeros(self.N, self.M, dtype=torch.long, device="cuda")
-        self.index_map_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
+        self.index_ = torch.zeros(self.N, self.M, dtype=torch.long, device=self.device)
+        self.index_map_ = torch.zeros(self.N, dtype=torch.long, device=self.device)
 
         ### network attributes ###
         self.mem = 32
 
         if self.cfg.MIXED_PRECISION:
-            self.kwargs = kwargs = {"device": "cuda", "dtype": torch.half}
+            self.kwargs = kwargs = {"device": self.device, "dtype": torch.half}
         else:
-            self.kwargs = kwargs = {"device": "cuda", "dtype": torch.float}
+            self.kwargs = kwargs = {"device": self.device, "dtype": torch.float}
         
         self.imap_ = torch.zeros(self.mem, self.M, DIM, **kwargs)
         self.gmap_ = torch.zeros(self.mem, self.M, 128, self.P, self.P, **kwargs)
@@ -72,9 +74,9 @@ class DPVO:
         self.pyramid = (self.fmap1_, self.fmap2_)
 
         self.net = torch.zeros(1, 0, DIM, **kwargs)
-        self.ii = torch.as_tensor([], dtype=torch.long, device="cuda")
-        self.jj = torch.as_tensor([], dtype=torch.long, device="cuda")
-        self.kk = torch.as_tensor([], dtype=torch.long, device="cuda")
+        self.ii = torch.as_tensor([], dtype=torch.long, device=self.device)
+        self.jj = torch.as_tensor([], dtype=torch.long, device=self.device)
+        self.kk = torch.as_tensor([], dtype=torch.long, device=self.device)
         
         # initialize poses to identity matrix
         self.poses_[:,6] = 1.0
@@ -96,7 +98,7 @@ class DPVO:
                 if "update.lmbda" not in k:
                     new_state_dict[k.replace('module.', '')] = v
             
-            self.network = VONet()
+            self.network = VONet(self.device)
             self.network.load_state_dict(new_state_dict)
 
         else:
@@ -107,7 +109,7 @@ class DPVO:
         self.RES = self.network.RES
         self.P = self.network.P
 
-        self.network.cuda()
+        self.network.to(self.device)
         self.network.eval()
 
         # if self.cfg.MIXED_PRECISION:
@@ -117,7 +119,7 @@ class DPVO:
     def start_viewer(self):
         from dpviewer import Viewer
 
-        intrinsics_ = torch.zeros(1, 4, dtype=torch.float32, device="cuda")
+        intrinsics_ = torch.zeros(1, 4, dtype=torch.float32, device=self.device)
 
         self.viewer = Viewer(
             self.image_,
@@ -204,7 +206,7 @@ class DPVO:
 
     def motion_probe(self):
         """ kinda hacky way to ensure enough motion for initialization """
-        kk = torch.arange(self.m-self.M, self.m, device="cuda")
+        kk = torch.arange(self.m-self.M, self.m, device=self.device)
         jj = self.n * torch.ones_like(kk)
         ii = self.ix[kk]
 
@@ -277,7 +279,7 @@ class DPVO:
                 self.net, (delta, weight, _) = \
                     self.network.update(self.net, ctx, corr, None, self.ii, self.jj, self.kk)
 
-            lmbda = torch.as_tensor([1e-4], device="cuda")
+            lmbda = torch.as_tensor([1e-4], device=self.device)
             weight = weight.float()
             target = coords[...,self.P//2,self.P//2] + delta.float()
 
@@ -297,23 +299,23 @@ class DPVO:
                 
     def __edges_all(self):
         return flatmeshgrid(
-            torch.arange(0, self.m, device="cuda"),
-            torch.arange(0, self.n, device="cuda"), indexing='ij')
+            torch.arange(0, self.m, device=self.device),
+            torch.arange(0, self.n, device=self.device), indexing='ij')
 
     def __edges_forw(self):
         r=self.cfg.PATCH_LIFETIME
         t0 = self.M * max((self.n - r), 0)
         t1 = self.M * max((self.n - 1), 0)
         return flatmeshgrid(
-            torch.arange(t0, t1, device="cuda"),
-            torch.arange(self.n-1, self.n, device="cuda"), indexing='ij')
+            torch.arange(t0, t1, device=self.device),
+            torch.arange(self.n-1, self.n, device=self.device), indexing='ij')
 
     def __edges_back(self):
         r=self.cfg.PATCH_LIFETIME
         t0 = self.M * max((self.n - 1), 0)
         t1 = self.M * max((self.n - 0), 0)
-        return flatmeshgrid(torch.arange(t0, t1, device="cuda"),
-            torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing='ij')
+        return flatmeshgrid(torch.arange(t0, t1, device=self.device),
+            torch.arange(max(self.n-r, 0), self.n, device=self.device), indexing='ij')
 
     def __call__(self, tstamp, image, intrinsics, depth=None):
         """ track new frame """
@@ -372,7 +374,7 @@ class DPVO:
             # patches is 1x96x3x3x3
             _xys = patches[0,:,:2,:,:].permute(0,2,3,1).reshape(-1,2)
             _ds = depth[(_xys[:,1]*self.RES).long(), (_xys[:,0]*self.RES).long()].reshape(1,-1,3,3)
-            _ds[_ds==0] = 1e-5
+            _ds[_ds==0] = 2.
             patches[:,:,2] = 1/_ds 
 
         self.patches_[self.n] = patches
