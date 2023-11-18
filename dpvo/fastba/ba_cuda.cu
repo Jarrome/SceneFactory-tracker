@@ -522,21 +522,21 @@ std::vector<torch::Tensor> cuda_ba(
       torch::Tensor U = torch::linalg::cholesky(S);
       torch::Tensor dX = torch::cholesky_solve(y, U);
 
+      if (not motion_only){
+         torch::Tensor dZ = Qt * (u - torch::matmul(Et, dX));
+         dZ = dZ.view({M});
+         patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
+              kx.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+              patches.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
+              dZ.packed_accessor32<float,1,torch::RestrictPtrTraits>());
+
+      }
+
       dX = dX.view({N, 6});
 
       pose_retr_kernel<<<NUM_BLOCKS(N), NUM_THREADS>>>(t0, t1,
           poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
           dX.packed_accessor32<float,2,torch::RestrictPtrTraits>());
-
-      if (not motion_only){
-        torch::Tensor dZ = Qt * (u - torch::matmul(Et, dX));
-        dZ = dZ.view({M});
-
-        patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
-          kx.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-          patches.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
-          dZ.packed_accessor32<float,1,torch::RestrictPtrTraits>());
-      }
 
     }
   }
