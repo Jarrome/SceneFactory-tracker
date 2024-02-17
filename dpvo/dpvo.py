@@ -17,7 +17,7 @@ Id = SE3.Identity(1, device='cuda:0')
 
 
 class DPVO:
-    def __init__(self, cfg, network, ht=480, wd=640, viz=False, device='cuda:0'):
+    def __init__(self, cfg, network, ht=480, wd=640, viz=False, init_scale=2, device='cuda:0'):
         self.device=device
         self.cfg = cfg
         self.load_weights(network)
@@ -31,6 +31,8 @@ class DPVO:
 
         self.ht = ht    # image height
         self.wd = wd    # image width
+
+        self.init_scale = float(init_scale)
 
         DIM = self.DIM
         RES = self.RES
@@ -367,8 +369,8 @@ class DPVO:
                 s = torch.median(self.patches_[self.n-3:self.n,:,2])
                 patches[:,:,2] = s
             else:
-                # In Yijun's mono application, we expect the depth is around 2m.
-                patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None])*.5
+                # In Yijun's mono application, we expect the depth is around 4m.
+                patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None]) / self.init_scale
 
         else:
             # patches is 1x96x3x3x3

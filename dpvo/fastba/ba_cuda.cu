@@ -498,45 +498,57 @@ std::vector<torch::Tensor> cuda_ba(
       torch::Tensor dZ = Qt * u;
 
       dZ = dZ.view({M});
-
-      patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
-        kx.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-        patches.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
-        dZ.packed_accessor32<float,1,torch::RestrictPtrTraits>());
-
+      if (not motion_only){
+          patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
+            kx.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+            patches.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
+            dZ.packed_accessor32<float,1,torch::RestrictPtrTraits>());
+      }
     }
 
     else {
-
-      torch::Tensor EQ = E * Q;
-      torch::Tensor Et = torch::transpose(E, 0, 1);
-      torch::Tensor Qt = torch::transpose(Q, 0, 1);
-
-      torch::Tensor S = B - torch::matmul(EQ, Et);
-      torch::Tensor y = v - torch::matmul(EQ,  u);
-
-      torch::Tensor I = torch::eye(6*N, opts);
-      S += I * (1e-4 * S + 1.0);
-
-
-      torch::Tensor U = torch::linalg::cholesky(S);
-      torch::Tensor dX = torch::cholesky_solve(y, U);
-
       if (not motion_only){
-         torch::Tensor dZ = Qt * (u - torch::matmul(Et, dX));
-         dZ = dZ.view({M});
-         patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
+          torch::Tensor EQ = E * Q;
+          torch::Tensor Et = torch::transpose(E, 0, 1);
+          torch::Tensor Qt = torch::transpose(Q, 0, 1);
+
+          torch::Tensor S = B - torch::matmul(EQ, Et);
+          torch::Tensor y = v - torch::matmul(EQ,  u);
+
+          torch::Tensor I = torch::eye(6*N, opts);
+          S += I * (1e-4 * S + 1.0);
+
+
+          torch::Tensor U = torch::linalg::cholesky(S);
+          torch::Tensor dX = torch::cholesky_solve(y, U);
+
+          torch::Tensor dZ = Qt * (u - torch::matmul(Et, dX));
+          dZ = dZ.view({M});
+          patch_retr_kernel<<<NUM_BLOCKS(M), NUM_THREADS>>>(
               kx.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
               patches.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
               dZ.packed_accessor32<float,1,torch::RestrictPtrTraits>());
 
+          dX = dX.view({N, 6});
+
+          pose_retr_kernel<<<NUM_BLOCKS(N), NUM_THREADS>>>(t0, t1,
+              poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+              dX.packed_accessor32<float,2,torch::RestrictPtrTraits>());
+
+
       }
+      else{
+          torch::Tensor I = torch::eye(6*N, opts);
+          torch::Tensor S = B + I * (1e-4 * B + 1.0);
+          torch::Tensor U = torch::linalg::cholesky(S);
+          torch::Tensor dX = torch::cholesky_solve(v, U);
 
-      dX = dX.view({N, 6});
+          dX = dX.view({N, 6});
 
-      pose_retr_kernel<<<NUM_BLOCKS(N), NUM_THREADS>>>(t0, t1,
-          poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-          dX.packed_accessor32<float,2,torch::RestrictPtrTraits>());
+          pose_retr_kernel<<<NUM_BLOCKS(N), NUM_THREADS>>>(t0, t1,
+              poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+              dX.packed_accessor32<float,2,torch::RestrictPtrTraits>());
+      }
 
     }
   }

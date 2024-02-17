@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from evo.core import sync
 from evo.core.trajectory import PoseTrajectory3D
-from evo.tools import plot
+#from evo.tools import plot
 from pathlib import Path
 
 
