@@ -322,6 +322,7 @@ class DPVO:
     def __call__(self, tstamp, image, intrinsics, depth=None):
         """ track new frame """
         self.motion_only = depth is not None
+        self.use_lidar = self.motion_only and not (depth>0).sum() > (depth.shape[0]*depth.shape[1]*.5)
 
         if (self.n+1) >= self.N:
             raise Exception(f'The buffer size is too small. You can increase it using "--buffer {self.N*2}"')
@@ -330,13 +331,16 @@ class DPVO:
             self.viewer.update_image(image)
 
         image = 2 * (image[None,None] / 255.0) - 0.5
+
+        # YIJUN: when use LiDAR's sparse depth, we will patchify with lidar points
+        #        Otherwise, use random points
         
         with autocast(enabled=self.cfg.MIXED_PRECISION):
             fmap, gmap, imap, patches, _, clr = \
                 self.network.patchify(image,
                     patches_per_image=self.cfg.PATCHES_PER_FRAME, 
                     gradient_bias=self.cfg.GRADIENT_BIAS, 
-                    return_color=True)
+                    return_color=True, lidar_depth=depth if self.use_lidar else None)
 
         ### update state attributes ###
         self.tlist.append(tstamp)
@@ -373,11 +377,19 @@ class DPVO:
                 patches[:,:,2] = torch.ones_like(patches[:,:,2,0,0,None,None]) / self.init_scale
 
         else:
-            # patches is 1x96x3x3x3
-            _xys = patches[0,:,:2,:,:].permute(0,2,3,1).reshape(-1,2)
-            _ds = depth[(_xys[:,1]*self.RES).long(), (_xys[:,0]*self.RES).long()].reshape(1,-1,3,3)
-            _ds[_ds==0] = 2.
-            patches[:,:,2] = 1/_ds 
+            if not self.use_lidar:
+                # patches is 1x96x3x3x3
+                _xys = patches[0,:,:2,:,:].permute(0,2,3,1).reshape(-1,2)
+                _ds = depth[(_xys[:,1]*self.RES).long(), (_xys[:,0]*self.RES).long()].reshape(1,-1,3,3)
+                _ds[_ds==0] = 2.
+                patches[:,:,2] = 1/_ds 
+            else:
+                # patches is 1x96x3x3x3
+                _xys = patches[0,:,:2,1,1]# Nx2 for patch centers 
+                _ds = depth[(_xys[:,1]*self.RES).long(), (_xys[:,0]*self.RES).long()].reshape(1,-1,1,1).expand(1,-1,3,3) # 1,N,3,3 
+                _ds[_ds==0] = 2.
+                patches[:,:,2] = 1/_ds 
+
 
         self.patches_[self.n] = patches
 

@@ -108,7 +108,7 @@ class Patchifier(nn.Module):
         g = F.avg_pool2d(g, 4, 4)
         return g
 
-    def forward(self, images, patches_per_image=80, disps=None, gradient_bias=False, return_color=False):
+    def forward(self, images, patches_per_image=80, disps=None, gradient_bias=False, return_color=False, lidar_depth=None, RES=4):
         """ extract patches from input images """
         fmap = self.fnet(images) / 4.0
         imap = self.inet(images) / 4.0
@@ -130,8 +130,16 @@ class Patchifier(nn.Module):
             y = torch.gather(y, 1, ix[:, -patches_per_image:])
 
         else:
-            x = torch.randint(1, w-1, size=[n, patches_per_image], device=self.device)
-            y = torch.randint(1, h-1, size=[n, patches_per_image], device=self.device)
+            if lidar_depth is None:
+                x = torch.randint(1, w-1, size=[n, patches_per_image], device=self.device)
+                y = torch.randint(1, h-1, size=[n, patches_per_image], device=self.device)
+            else:
+                # YIJUN: when use LIDAR, we patchify on the sparse points
+                assert n == 1, 'only one frame'
+                yx = torch.nonzero(lidar_depth, as_tuple=True) 
+                sample_id = torch.randint(0, yx[0].shape[0], size=[n*patches_per_image])
+                x = yx[1][sample_id].view(n,patches_per_image) / RES
+                y = yx[0][sample_id].view(n,patches_per_image) / RES
         
         coords = torch.stack([x, y], dim=-1).float()
         imap = altcorr.patchify(imap[0], coords, 0).view(b, -1, DIM, 1, 1)
@@ -191,7 +199,7 @@ class VONet(nn.Module):
         intrinsics = intrinsics / 4.0
         disps = disps[:, :, 1::4, 1::4].float()
 
-        fmap, gmap, imap, patches, ix = self.patchify(images, disps=disps)
+        fmap, gmap, imap, patches, ix = self.patchify(images, disps=disps, RES=self.RES)
 
         corr_fn = CorrBlock(fmap, gmap)
 
