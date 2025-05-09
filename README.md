@@ -1,3 +1,34 @@
+# DPVO-RGBX
+
+The DPVO-RGBX module used in SceneFactory
+
+## Install
+```
+source install.sh
+```
+
+## Run
+```
+# RGBD
+# FIXME: download link
+python example_rgbd.py data/robotics_hall_subset
+
+# RGBL
+# FIXME: download link
+
+python example_rgbl.py data/castle_subset
+
+
+
+
+
+
+```
+
+
+
+
+
 # Deep Patch Visual Odometry
 This repository contains the source code for our paper:
 

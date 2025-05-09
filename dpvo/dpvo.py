@@ -322,7 +322,7 @@ class DPVO:
     def __call__(self, tstamp, image, intrinsics, depth=None):
         """ track new frame """
         self.motion_only = depth is not None
-        self.use_lidar = self.motion_only and not (depth>0).sum() > (depth.shape[0]*depth.shape[1]*.5)
+        self.use_lidar = self.motion_only and not (depth>0).sum() > (depth.shape[0]*depth.shape[1]*.2)
 
         if (self.n+1) >= self.N:
             raise Exception(f'The buffer size is too small. You can increase it using "--buffer {self.N*2}"')
