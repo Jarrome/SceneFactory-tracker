@@ -11,18 +11,11 @@ source install.sh
 ```
 # RGBD
 # FIXME: download link
-python example_rgbd.py data/robotics_hall_subset
+python example_rgbd.py
 
 # RGBL
 # FIXME: download link
-
-python example_rgbl.py data/castle_subset
-
-
-
-
-
-
+python example_rgbl.py 
 ```
 
 
