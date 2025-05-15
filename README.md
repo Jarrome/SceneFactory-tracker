@@ -1,6 +1,6 @@
 # DPVO-RGBX
 
-The DPVO-RGBX module used in SceneFactory
+The DPVO-RGBX module used in [SceneFactory](https://github.com/Jarrome/SceneFactory).
 
 ## Install
 ```
